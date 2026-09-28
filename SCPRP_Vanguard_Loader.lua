@@ -12,7 +12,7 @@
 -- The importer intentionally interprets the exact Lua subset produced
 -- by the Vanguard exporter. It does not use loadstring/load.
 
-local BASE_URL = "https://raw.githubusercontent.com/YOURNAME/YOURREPO/main/"
+local BASE_URL = "https://raw.githubusercontent.com/hdiwh532-spec/scprp-vanguard-import/main/"
 
 local CREATE_COUNT = 23
 local REFS_COUNT = 1
