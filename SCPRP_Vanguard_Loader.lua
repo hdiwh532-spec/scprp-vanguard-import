@@ -1,4 +1,4 @@
--- SCPRP VANGUARD FACILITY REMOTE IMPORTER
+-- SCPRP VANGUARD FACILITY REMOTE IMPORTER - FIXED V2
 -- Generated from SCPRP_DIRECT.
 --
 -- IMPORTANT:
@@ -151,6 +151,39 @@ local function decodeQuoted(s)
 	end
 
 	return out
+end
+
+
+-- ============================================================
+-- SAFE QUOTED STRING READER
+-- Lua patterns do not support regex constructs such as (?:...).
+-- This scans quoted strings while respecting backslash escapes.
+-- ============================================================
+
+local function readQuotedFrom(s, startIndex)
+	if string.sub(s, startIndex, startIndex) ~= '"' then
+		return nil, nil
+	end
+
+	local i = startIndex + 1
+	local escaped = false
+	local length = string.len(s)
+
+	while i <= length do
+		local c = string.sub(s, i, i)
+
+		if escaped then
+			escaped = false
+		elseif c == "\\" then
+			escaped = true
+		elseif c == '"' then
+			return string.sub(s, startIndex, i), i
+		end
+
+		i = i + 1
+	end
+
+	return nil, nil
 end
 
 -- ============================================================
@@ -547,20 +580,33 @@ local function processCreateBlock(block)
 					{prop, expr}
 				)
 			else
-				local attrName, attrExpr = string.match(
-					line,
-					'^a:SetAttribute%("((?:\\.|[^"])*)",(.*)%)$'
-				)
+				local attrPrefix = "a:SetAttribute("
+				local attrName = nil
+				local attrExpr = nil
+
+				if string.sub(line, 1, string.len(attrPrefix)) == attrPrefix then
+					local quoted, quoteEnd = readQuotedFrom(
+						line,
+						string.len(attrPrefix) + 1
+					)
+
+					if quoted
+						and string.sub(line, quoteEnd + 1, quoteEnd + 1) == ","
+						and string.sub(line, string.len(line), string.len(line)) == ")" then
+
+						attrName = decodeQuoted(quoted)
+						attrExpr = string.sub(
+							line,
+							quoteEnd + 2,
+							string.len(line) - 1
+						)
+					end
+				end
 
 				if attrName and attrExpr then
 					table.insert(
 						attributes,
-						{
-							decodeQuoted(
-								'"' .. attrName .. '"'
-							),
-							attrExpr
-						}
+						{attrName, attrExpr}
 					)
 				else
 					local parent = string.match(
@@ -781,18 +827,31 @@ local function processRenameFile(number)
 			'local a=f%("(__SCPRP_%d+)"%)'
 		)
 
-		local encodedName = string.match(
+		local encodedName = nil
+		local namePrefix = "a.Name="
+		local nameStart = string.find(
 			block,
-			'a%.Name="((?:\\.|[^"])*)"'
+			namePrefix,
+			1,
+			true
 		)
+
+		if nameStart then
+			local quoted = readQuotedFrom(
+				block,
+				nameStart + string.len(namePrefix)
+			)
+
+			if quoted then
+				encodedName = quoted
+			end
+		end
 
 		if source and encodedName then
 			local a = instances[source]
 
 			if a then
-				local newName = decodeQuoted(
-					'"' .. encodedName .. '"'
-				)
+				local newName = decodeQuoted(encodedName)
 
 				pcall(function()
 					a.Name = newName
@@ -832,6 +891,7 @@ if alreadyImported then
 end
 
 print("======================================")
+print("LOADER VERSION: FIXED V2")
 print("SCPRP VANGUARD IMPORT STARTING")
 print("======================================")
 
