@@ -1,0 +1,16 @@
+{
+  "source": "SCPRP_DIRECT.rbxmx",
+  "objects": 178082,
+  "create_modules": 1252,
+  "reference_modules": 23,
+  "rename_modules": 104,
+  "created_files": 23,
+  "refs_files": 1,
+  "rename_files": 2,
+  "notes": [
+    "Raw create/ref/rename sources are preserved from the exported ModuleScripts.",
+    "The loader interprets only the exact syntax emitted by the exporter.",
+    "Scripts/LocalScripts/ModuleScripts from the original map were intentionally excluded by the exporter.",
+    "One UnionOperation and 18 TouchTransmitters were skipped by the exporter."
+  ]
+}
