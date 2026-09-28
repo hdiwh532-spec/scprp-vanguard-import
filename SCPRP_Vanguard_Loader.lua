@@ -1,4 +1,4 @@
--- SCPRP VANGUARD FACILITY REMOTE IMPORTER - FIXED V2
+-- SCPRP VANGUARD FACILITY REMOTE IMPORTER - RESUMABLE V3
 -- Generated from SCPRP_DIRECT.
 --
 -- IMPORTANT:
@@ -20,8 +20,8 @@ local RENAME_COUNT = 2
 
 local MARKER_NAME = "__SCPRP_VANGUARD_IMPORT_COMPLETE__"
 
-local instances = {}
 local createdCount = 0
+local existingCount = 0
 local failedProperties = 0
 local failedBlocks = 0
 
@@ -627,9 +627,30 @@ local function processCreateBlock(block)
 		return
 	end
 
+	-- RESUME SAFELY:
+	-- If a previous attempt already created this temporary object,
+	-- do not create a duplicate.
+	local existing = f(tempName)
+
+	if existing then
+		existingCount = existingCount + 1
+
+		if parentName then
+			local parentInstance = f(parentName)
+
+			if parentInstance then
+				pcall(function()
+					existing.Parent = parentInstance
+				end)
+			end
+		end
+
+		return
+	end
+
 	local instance
 
-	local ok, err = pcall(function()
+	local ok = pcall(function()
 		instance = Instance.new(className)
 	end)
 
@@ -678,12 +699,11 @@ local function processCreateBlock(block)
 		return
 	end
 
-	instances[tempName] = instance
 	createdCount = createdCount + 1
 
 	-- Parent after the object has been inserted.
 	if parentName then
-		local parentInstance = instances[parentName]
+		local parentInstance = f(parentName)
 
 		if parentInstance then
 			local parented = pcall(function()
@@ -715,26 +735,52 @@ local function processCreateFile(number)
 		BASE_URL .. fileName
 	)
 
+	print(
+		"Downloaded " ..
+		fileName ..
+		" | bytes: " ..
+		tostring(string.len(body))
+	)
+
 	local countBefore = createdCount
+	local existingBefore = existingCount
+	local processed = 0
 
 	for block in string.gmatch(
 		body,
 		"do\n(.-)\nend"
 	) do
 		processCreateBlock(block)
+		processed = processed + 1
 
-		if createdCount > 0
-			and createdCount % 100 == 0 then
+		-- Yield often enough that the sandbox never spends a long
+		-- uninterrupted stretch parsing/creating objects.
+		if processed % 10 == 0 then
 			task.wait()
+		end
+
+		if processed % 250 == 0 then
+			print(
+				fileName ..
+				" progress: " ..
+				tostring(processed) ..
+				" blocks | new " ..
+				tostring(createdCount - countBefore) ..
+				" | existing " ..
+				tostring(existingCount - existingBefore)
+			)
 		end
 	end
 
 	print(
 		"Finished " ..
 		fileName ..
-		" | created " ..
+		" | blocks " ..
+		tostring(processed) ..
+		" | new " ..
 		tostring(createdCount - countBefore) ..
-		" objects"
+		" | existing " ..
+		tostring(existingCount - existingBefore)
 	)
 end
 
@@ -767,8 +813,8 @@ local function processReferenceFile(number)
 		)
 
 		if source and property and target then
-			local a = instances[source]
-			local b = instances[target]
+			local a = f(source)
+			local b = f(target)
 
 			if a and b then
 				local ok = pcall(function()
@@ -787,8 +833,16 @@ local function processReferenceFile(number)
 
 		processed = processed + 1
 
-		if processed % 100 == 0 then
+		if processed % 25 == 0 then
 			task.wait()
+		end
+
+		if processed % 500 == 0 then
+			print(
+				fileName ..
+				" progress: " ..
+				tostring(processed)
+			)
 		end
 	end
 
@@ -848,7 +902,7 @@ local function processRenameFile(number)
 		end
 
 		if source and encodedName then
-			local a = instances[source]
+			local a = f(source)
 
 			if a then
 				local newName = decodeQuoted(encodedName)
@@ -865,8 +919,16 @@ local function processRenameFile(number)
 
 		processed = processed + 1
 
-		if processed % 100 == 0 then
+		if processed % 25 == 0 then
 			task.wait()
+		end
+
+		if processed % 1000 == 0 then
+			print(
+				fileName ..
+				" progress: " ..
+				tostring(processed)
+			)
 		end
 	end
 
@@ -891,7 +953,7 @@ if alreadyImported then
 end
 
 print("======================================")
-print("LOADER VERSION: FIXED V2")
+print("LOADER VERSION: RESUMABLE V3")
 print("SCPRP VANGUARD IMPORT STARTING")
 print("======================================")
 
@@ -907,7 +969,8 @@ end
 
 print("======================================")
 print("CREATE PHASE COMPLETE")
-print("Objects created:", createdCount)
+print("Objects newly created:", createdCount)
+print("Objects already present:", existingCount)
 print("Property failures:", failedProperties)
 print("Block failures:", failedBlocks)
 print("======================================")
@@ -958,7 +1021,8 @@ end)
 
 print("======================================")
 print("SCPRP VANGUARD IMPORT COMPLETE")
-print("Objects created:", createdCount)
+print("Objects newly created:", createdCount)
+print("Objects already present:", existingCount)
 print("Property failures:", failedProperties)
 print("Block failures:", failedBlocks)
 print("======================================")
